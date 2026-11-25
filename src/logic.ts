@@ -1,0 +1,9 @@
+import {InventoryItem,Recipe} from './types';
+export const validEmail=(email:string)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+export const validPassword=(password:string)=>password.length>=8 && /[A-Z]/.test(password) && /\d/.test(password);
+export const barcodeType=(code:string)=>code.length===12?'UPC-A':code.length===6?'UPC-E':code.length===8?'EAN-8':code.length===13?'EAN-13':null;
+export const validateBarcode=(code:string)=>!!barcodeType(code)&&/^\d+$/.test(code);
+export const daysUntil=(date:string,today:string)=>Math.round((new Date(date+'T00:00:00').getTime()-new Date(today+'T00:00:00').getTime())/86400000);
+export const statusFor=(item:InventoryItem,today:string)=>!item.expiration?'fresh':daysUntil(item.expiration,today)<0?'expired':daysUntil(item.expiration,today)<=2?'soon':'fresh';
+export const recommend=(all:Recipe[],items:InventoryItem[],filters:{cuisine:string;maxTime:number;diet:string;allergy:string;equipment:string;prioritize:boolean})=>{const available=new Set(items.filter(i=>i.status==='active'&&i.quantity>0).map(i=>i.name.toLowerCase())); return all.filter(r=>(!filters.cuisine||r.cuisine===filters.cuisine)&&r.time<=filters.maxTime&&(!filters.diet||r.dietary.includes(filters.diet))&&(!filters.allergy||!r.allergies.includes(filters.allergy))&&(!filters.equipment||r.equipment.includes(filters.equipment))).map(r=>{const missing=r.ingredients.filter(x=>!available.has(x));const matched=r.ingredients.length-missing.length;const expiring=items.some(i=>i.expiration&&i.status==='active'&&i.name.toLowerCase()&&r.ingredients.includes(i.name.toLowerCase())&&daysUntil(i.expiration,new Date().toISOString().slice(0,10))<=2);return {...r,missing,matched,score:matched/r.ingredients.length+(filters.prioritize&&expiring?.2:0)}}).filter(r=>r.matched>0).sort((a,b)=>b.score-a.score);};
+export const estimateExpiration=(today:string,days=7)=>{const d=new Date(today+'T00:00:00');d.setDate(d.getDate()+days);return d.toISOString().slice(0,10)};

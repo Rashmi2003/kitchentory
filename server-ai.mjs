@@ -1,8 +1,35 @@
 import express from 'express';
-import {createServer as createViteServer} from 'vite';
+import { createServer as createViteServer } from 'vite';
 import path from 'node:path';
+import { databaseStatus, getDatabaseRecipes } from './recipe-database.mjs';
 
-const app=express();
-app.use(express.json({limit:'1mb'}));
-app.post('/api/generate-recipes',async(req,res)=>{const key=process.env.OPENAI_API_KEY;if(!key)return res.status(503).json({error:'AI/API unavailable',fallback:true});try{const payload={selectedIngredients:req.body?.selectedIngredients||[],inventory:req.body?.inventory||[],preferences:req.body?.preferences||{}};const response=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:'gpt-4o-mini',temperature:.3,response_format:{type:'json_object'},messages:[{role:'system',content:'Generate complete household recipes as JSON. Return {recipes:[{title,cuisine,time,servings,ingredients:[{name,amount}],instructions:[...],missingIngredients:[...],dietary:[...],allergies:[...]}]}. Never include API keys or markdown.'},{role:'user',content:JSON.stringify(payload)}]})});if(response.status===429)return res.status(429).json({error:'AI rate limit reached',fallback:true});if(!response.ok)return res.status(502).json({error:'AI service unavailable',fallback:true});const provider=await response.json();const parsed=JSON.parse(provider.choices?.[0]?.message?.content||'{"recipes":[]}');const recipes=(parsed.recipes||[]).filter(r=>r&&typeof r.title==='string'&&typeof r.cuisine==='string'&&Number.isFinite(r.time)&&Array.isArray(r.ingredients)&&Array.isArray(r.instructions)&&r.instructions.length>=4).map((r,i)=>({id:`ai-${i}-${Date.now()}`,name:r.title,image:'',cuisine:r.cuisine,time:r.time,servings:r.servings||2,difficulty:r.difficulty||'Medium',ingredients:r.ingredients,optionalIngredients:r.optionalIngredients||[],equipment:r.equipment||[],dietary:r.dietary||[],allergies:r.allergies||[],instructions:r.instructions,notes:r.preparationNotes||'Follow the numbered instructions and adjust seasoning to taste.',missing:r.missingIngredients||[],manual:false}));return res.json({source:'ai',recipes});}catch(error){return res.status(502).json({error:'AI/API malformed or unavailable',fallback:true})}});
-const production=process.env.NODE_ENV==='production';if(production){app.use(express.static(path.resolve('dist')));app.get('*',(req,res)=>res.sendFile(path.resolve('dist/index.html')));}else{const vite=await createViteServer({server:{middlewareMode:true},appType:'spa'});app.use(vite.middlewares)}const port=Number(process.env.PORT||5173);app.listen(port,()=>console.log(`Kitchentory listening on http://localhost:${port}`));
+const app = express();
+app.use(express.json({ limit: '1mb' }));
+let requestNumber = 0;
+
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+app.get('/api/recipes/status', (req, res) => {
+  const status = databaseStatus();
+  res.status(status.available ? 200 : 503).json(status.available ? status : { error: 'database_unavailable', message: 'Recipe database unavailable.' });
+});
+
+app.post(['/api/recipes/recommendations', '/api/generate-recipes'], (req, res) => {
+  requestNumber += 1;
+  const inventory = Array.isArray(req.body?.inventory) ? req.body.inventory : [];
+  const selectedIngredients = Array.isArray(req.body?.selectedIngredients) ? req.body.selectedIngredients : [];
+  const result = getDatabaseRecipes({ inventory, selectedIngredients, preferences: req.body?.preferences || {} });
+  if (result.error) return res.status(503).json({ error: result.error, message: 'Recipe database unavailable.' });
+  console.log(`[recipe-database] request=${requestNumber} inventory=${inventory.length} selected=${selectedIngredients.length} results=${result.recipes.length}`);
+  return res.json({ source: 'sqlite', recipes: result.recipes, notice: result.recipes.length ? 'Kitchentory recipe database recommendations.' : 'No matching recipes found for these ingredients and filters.' });
+});
+
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.resolve('dist')));
+  app.use((req, res) => res.sendFile(path.resolve('dist/index.html')));
+} else {
+  const vite = await createViteServer({ server: { middlewareMode: true, hmr: false }, appType: 'spa' });
+  app.use(vite.middlewares);
+}
+const port = process.env.PORT || 5173;
+app.listen(port, () => console.log(`Kitchentory catalog server listening on http://localhost:${port}`));

@@ -19,16 +19,19 @@ npm run build
 PORT=4173 NODE_ENV=production npm start
 ```
 
-## Optional AI recipe generation
+## Local recipe database
 
-Set an environment variable locally before starting the server; never place it in frontend code or commit it:
+The application reads the authoritative SQLite database at `data/kitchentory_recipes.sqlite` through the backend only. It makes no recipe-service calls during normal use. `POST /api/recipes/recommendations` applies cuisine, dietary, allergy, equipment, time, inventory, and expiration-priority rules.
+
+To refresh the dataset intentionally, run:
 
 ```bash
-export OPENAI_API_KEY=your-key-here
-npm run dev
+node scripts/import-recipes.mjs
 ```
 
-`POST /api/generate-recipes` sends selected ingredients and preferences to the server. Missing keys, rate limits, provider errors, and malformed responses produce a clear fallback state. The UI then uses complete local seeded recipes.
+The importer preserves each source meal ID, title, URL, image URL, area/cuisine, ingredient names, measurements, and raw instructions. The app shows TheMealDB attribution and links to the original meal. Use is subject to [TheMealDB’s terms of use](https://themealdb.com/terms_of_use.php), including their source-attribution and Creative Commons artwork requirements.
+
+`npm run dev` starts the Express catalog endpoint and Vite frontend together. `POST /api/generate-recipes` matches local imported records against household inventory, applies cuisine, dietary, allergy, equipment, time, and expiration-priority rules, and rotates matching suggestions.
 
 ## Demo login
 

@@ -5,13 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "node server-ai.mjs",
+    "import:recipes": "node scripts/import-recipes.mjs",
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "preview": "vite preview",
-    "start": "NODE_ENV=production node server-ai.mjs"
+    "start": "node server-ai.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "better-sqlite3": "^13.2.0",
     "express": "^5.3.0",
     "lucide-react": "latest",
     "react": "latest",
